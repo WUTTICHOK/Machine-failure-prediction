@@ -1,0 +1,12 @@
+,coefficient
+num__power_w,-4.2231004995714985
+num__wear_torque,-1.2899633666636294
+num__temp_diff_k,-0.6506262446767295
+cat__type_M,-0.610302214822098
+cat__type_H,-0.5571633682647579
+cat__type_L,-0.1831606171448224
+num__process_temp_k,-0.09186465716542708
+num__air_temp_k,0.2577186078762147
+num__tool_wear_min,2.3419779398719713
+num__rot_speed_rpm,2.473868524210164
+num__torque_nm,7.9010299091906075

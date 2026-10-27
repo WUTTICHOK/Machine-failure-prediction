@@ -1,0 +1,15 @@
+case,type,air_temp_k,process_temp_k,rot_speed_rpm,torque_nm,tool_wear_min,actual,notebook_proba,notebook_prediction
+test_failure_1,M,300.7,309.6,1996.0,19.8,203.0,Failure,0.08012941313939671,No Failure
+test_failure_2,L,301.4,309.9,1259.0,63.9,20.0,Failure,0.6313795660893176,Failure
+test_failure_3,L,299.1,310.2,1317.0,54.8,231.0,Failure,0.9753574710499445,Failure
+test_failure_4,M,299.7,309.3,1399.0,41.9,221.0,Failure,0.0646555681691615,No Failure
+test_failure_5,L,297.3,308.2,1396.0,52.7,212.0,Failure,0.8454883244943704,Failure
+test_normal_1,L,303.6,311.8,1695.0,30.7,90.0,No Failure,0.042103454759155834,No Failure
+test_normal_2,L,300.1,309.3,1685.0,27.1,203.0,No Failure,0.04661602707805789,No Failure
+test_normal_3,M,297.2,308.2,1405.0,42.5,204.0,No Failure,0.0420973174677391,No Failure
+test_normal_4,L,300.3,310.1,1483.0,39.9,174.0,No Failure,0.0,No Failure
+test_normal_5,L,299.3,310.6,1480.0,45.1,107.0,No Failure,0.0,No Failure
+boundary_all_min,L,295.3,305.7,1168.0,3.8,0.0,,0.3763080860142445,No Failure
+boundary_all_max,H,304.5,313.8,2886.0,76.6,253.0,,0.83893338728962,Failure
+boundary_new_tool,M,300.0,310.0,1500.0,40.0,0.0,,0.0,No Failure
+boundary_max_wear,L,300.0,310.0,1500.0,40.0,253.0,,0.16423437475639235,No Failure
