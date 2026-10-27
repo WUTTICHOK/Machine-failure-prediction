@@ -175,7 +175,15 @@ with tab_check:
         ref["app_prediction"] = [a["prediction"] for a in app_rows]
         ref["abs_diff"] = (ref["app_proba"] - ref["notebook_proba"]).abs()
         ref["match"] = (ref["app_prediction"] == ref["notebook_prediction"]) & (ref["abs_diff"] < 1e-9)
-        st.dataframe(ref, width="stretch")
+        # Display copy: short number formats; boundary cases have no true outcome
+        shown = ref.copy()
+        shown["actual"] = shown["actual"].fillna("- (boundary test)").replace("", "- (boundary test)")
+        shown["notebook_proba"] = shown["notebook_proba"].round(4)
+        shown["app_proba"] = shown["app_proba"].round(4)
+        shown["abs_diff"] = shown["abs_diff"].map(lambda v: "0" if v == 0 else f"{v:.0e}")
+        st.dataframe(shown, width="stretch", hide_index=True)
+        st.caption("abs_diff = |app probability - notebook probability|. Values such as 2e-17 (0.00000000000000002) "
+                   "are floating-point rounding from saving to CSV, i.e. identical predictions.")
         if ref["match"].all():
             st.success(f"All {len(ref)} reference cases match (max |difference| = {ref['abs_diff'].max():.2e}).")
         else:
