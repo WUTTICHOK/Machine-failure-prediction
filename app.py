@@ -45,7 +45,17 @@ except Exception as exc:  # e.g. scikit-learn version mismatch
 stats = artifact["feature_stats"]
 threshold = artifact["threshold"]
 
-st.title("⚙️ Machine Failure Prediction")
+LOGO_PATH = ROOT / "assets" / "group_logo.png"
+GROUP_NAME = "MADE IN THAILAND (Walailak)"
+
+if LOGO_PATH.exists():
+    logo_col, title_col = st.columns([1, 5], vertical_alignment="center")
+    logo_col.image(str(LOGO_PATH), width=170)
+    with title_col:
+        st.title("⚙️ Machine Failure Prediction")
+        st.caption(f"Group {GROUP_NAME}")
+else:
+    st.title("⚙️ Machine Failure Prediction")
 st.markdown(
     "Predicts whether a machine will **fail during the next operating shift** from readings taken at inspection. "
     "Intended for maintenance staff as an early-warning aid, not a replacement for inspection."
@@ -256,8 +266,10 @@ with tab_about:
             expanded=False)
 
 # --------------------------------------------------------------------------- Footer (every tab)
-GROUP_NAME = "MADE IN THAILAND (Walailak)"
 st.divider()
+if LOGO_PATH.exists():
+    _, mid, _ = st.columns([2, 1, 2])
+    mid.image(str(LOGO_PATH), width=220)
 st.markdown(
     f"<div style='text-align:center; opacity:0.8;'>Developed by group <b>{GROUP_NAME}</b> · "
     "IFJC4002 Practical Artificial Intelligence with Python · Case 7 Machine Failure Prediction</div>",
