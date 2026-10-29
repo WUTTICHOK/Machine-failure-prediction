@@ -2,6 +2,7 @@
 
 Run locally:  streamlit run app.py
 """
+import base64
 import json
 from pathlib import Path
 
@@ -267,11 +268,14 @@ with tab_about:
 
 # --------------------------------------------------------------------------- Footer (every tab)
 st.divider()
-if LOGO_PATH.exists():
-    _, mid, _ = st.columns([2, 1, 2])
-    mid.image(str(LOGO_PATH), width=220)
+footer_logo = ""
+if LOGO_PATH.exists():  # small logo inline, in front of the footer text
+    logo_b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode()
+    footer_logo = (f"<img src='data:image/png;base64,{logo_b64}' alt='{GROUP_NAME} logo' "
+                   "style='height:56px; vertical-align:middle; margin-right:12px;'>")
 st.markdown(
-    f"<div style='text-align:center; opacity:0.8;'>Developed by group <b>{GROUP_NAME}</b> · "
-    "IFJC4002 Practical Artificial Intelligence with Python · Case 7 Machine Failure Prediction</div>",
+    f"<div style='display:flex; align-items:center; justify-content:center; flex-wrap:wrap; opacity:0.85;'>"
+    f"{footer_logo}<span>Developed by group <b>{GROUP_NAME}</b> · "
+    "IFJC4002 Practical Artificial Intelligence with Python · Case 7 Machine Failure Prediction</span></div>",
     unsafe_allow_html=True,
 )
