@@ -7,7 +7,7 @@ used (copy them exactly). The stages below are a guide; one row per prompt.
 | # | Stage | Member | Prompt (exact text) | What the AI produced | How we checked it | What we changed and why |
 |---|---|---|---|---|---|---|
 | 1 | Data analysis / EDA | | | | e.g. compared counts with UCI documentation; re-ran `df.describe()` | |
-| 2 | Preprocessing & leakage | | | | e.g. confirmed TWF–RNF only = 1 when failure = 1 → leakage, removed them | |
+| 2 | Preprocessing & leakage | | | | e.g. checked the imputer is fitted after the split, inside the pipeline; record_id excluded | |
 | 3 | Model training / tuning | | | | e.g. checked scaler fitted inside Pipeline only on training folds | |
 | 4 | Evaluation / threshold | | | | e.g. verified the threshold was chosen on out-of-fold training data, not test | |
 | 5 | Streamlit app / validation | | | | e.g. typed invalid values; compared app vs notebook reference cases | |

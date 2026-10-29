@@ -1,82 +1,105 @@
 {
-  "threshold": 0.53,
-  "model_name": "Random Forest",
+  "threshold": 0.7,
+  "model_name": "Logistic Regression",
   "input_features": [
-    "type",
-    "air_temp_k",
-    "process_temp_k",
-    "rot_speed_rpm",
+    "air_temperature_c",
+    "process_temperature_c",
+    "rotational_speed_rpm",
     "torque_nm",
-    "tool_wear_min"
+    "tool_wear_min",
+    "vibration_mm_s",
+    "machine_age_years"
   ],
-  "type_categories": [
-    "L",
-    "M",
-    "H"
+  "imputable_features": [
+    "air_temperature_c",
+    "process_temperature_c"
   ],
   "target_names": {
     "0": "No Failure",
     "1": "Failure"
   },
   "feature_stats": {
-    "air_temp_k": {
-      "min": 295.3,
-      "max": 304.5,
-      "mean": 300.00545,
-      "std": 1.9968440652132833,
-      "p01": 295.9,
-      "p99": 304.1
+    "air_temperature_c": {
+      "min": 18.0,
+      "max": 38.0,
+      "mean": 27.772704296545918,
+      "std": 5.851283396444256,
+      "median": 27.7
     },
-    "process_temp_k": {
-      "min": 305.7,
-      "max": 313.8,
-      "mean": 310.0060625,
-      "std": 1.4794316766429219,
-      "p01": 306.6,
-      "p99": 313.2
+    "process_temperature_c": {
+      "min": 52.3,
+      "max": 96.9,
+      "mean": 72.53000000000002,
+      "std": 8.417353565277708,
+      "median": 72.5
     },
-    "rot_speed_rpm": {
-      "min": 1168.0,
-      "max": 2886.0,
-      "mean": 1539.356875,
-      "std": 180.98294289362408,
-      "p01": 1272.99,
-      "p99": 2204.0200000000004
+    "rotational_speed_rpm": {
+      "min": 902.0,
+      "max": 2499.0,
+      "mean": 1707.7125,
+      "std": 451.6191626438584,
+      "median": 1695.5
     },
     "torque_nm": {
-      "min": 3.8,
-      "max": 76.6,
-      "mean": 40.0033625,
-      "std": 10.01954559125944,
-      "p01": 16.599,
-      "p99": 62.9
+      "min": 15.0,
+      "max": 85.0,
+      "mean": 49.98925,
+      "std": 20.24847138095172,
+      "median": 49.4
     },
     "tool_wear_min": {
       "min": 0.0,
-      "max": 253.0,
-      "mean": 107.685,
-      "std": 63.61200229402052,
-      "p01": 0.0,
-      "p99": 222.0
+      "max": 250.0,
+      "mean": 124.345,
+      "std": 72.72347095463569,
+      "median": 126.0
+    },
+    "vibration_mm_s": {
+      "min": 0.2,
+      "max": 5.59,
+      "mean": 2.5023666666666666,
+      "std": 1.0933404745930595,
+      "median": 2.47
+    },
+    "machine_age_years": {
+      "min": 0.5,
+      "max": 15.0,
+      "mean": 7.790916666666665,
+      "std": 4.172537303529672,
+      "median": 7.8
     }
   },
-  "train_failure_rate": 0.033875,
+  "train_failure_rate": 0.15916666666666668,
+  "split": {
+    "train": {
+      "rows": 1200,
+      "failures": 191
+    },
+    "validation": {
+      "rows": 400,
+      "failures": 64
+    },
+    "test": {
+      "rows": 400,
+      "failures": 64
+    }
+  },
   "test_metrics": {
-    "accuracy": 0.992,
-    "precision": 0.9333333333333333,
-    "recall": 0.8235294117647058,
-    "f1": 0.875,
-    "macro_f1": 0.9354338842975207,
-    "balanced_accuracy": 0.9107295091949823,
-    "roc_auc": 0.9755510900012179,
-    "pr_auc": 0.8855191913215599,
-    "tn": 1928,
-    "fp": 4,
-    "fn": 12,
-    "tp": 56
+    "accuracy": 0.8525,
+    "precision": 0.5333333333333333,
+    "recall": 0.625,
+    "f1": 0.5755395683453237,
+    "macro_f1": 0.7431404347021626,
+    "balanced_accuracy": 0.7604166666666667,
+    "roc_auc": 0.8836030505952381,
+    "pr_auc": 0.6141137860793476,
+    "tn": 301,
+    "fp": 35,
+    "fn": 24,
+    "tp": 40
   },
   "sklearn_version": "1.6.1",
-  "python_version": "3.13.16",
-  "trained_at": "2026-10-27T12:50:43+00:00",
+  "python_version": "3.13.18",
+  "trained_at": "2026-10-29T07:10:11+00:00",
   "seed": 42
 }

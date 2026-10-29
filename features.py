@@ -8,57 +8,57 @@ deployed next to app.py.
 import numpy as np
 import pandas as pd
 
-# Original AI4I 2020 column name -> clean name used in code
-RAW_TO_CLEAN = {
-    "Type": "type",
-    "Air temperature [K]": "air_temp_k",
-    "Process temperature [K]": "process_temp_k",
-    "Rotational speed [rpm]": "rot_speed_rpm",
-    "Torque [Nm]": "torque_nm",
-    "Tool wear [min]": "tool_wear_min",
-}
+DATA_FILE = "07_Machine_Failure.xlsx"   # lecturer-provided dataset (sheet "Data")
+DATA_SHEET = "Data"
 
-TARGET = "Machine failure"
+ID_COLUMN = "record_id"                 # identifier - excluded from inputs
+TARGET = "failure_next_shift"           # "Failure" / "No_Failure"
+POSITIVE_RAW = "Failure"
 TARGET_NAMES = {0: "No Failure", 1: "Failure"}
 POSITIVE_LABEL = 1  # "Failure" is the positive class for precision/recall/F1
 
-# Columns that must NOT be used as inputs
-ID_COLUMNS = ["UDI", "Product ID"]                 # identifiers
-LEAKAGE_COLUMNS = ["TWF", "HDF", "PWF", "OSF", "RNF"]  # failure-mode flags reveal the outcome
+INPUT_FEATURES = [  # order expected by the pipeline
+    "air_temperature_c",
+    "process_temperature_c",
+    "rotational_speed_rpm",
+    "torque_nm",
+    "tool_wear_min",
+    "vibration_mm_s",
+    "machine_age_years",
+]
+# Inputs that may be missing (blank sensor readings in the data); filled by the
+# pipeline's median imputer, so the dashboard also accepts them as blank.
+IMPUTABLE_FEATURES = ["air_temperature_c", "process_temperature_c"]
 
-CATEGORICAL_FEATURES = ["type"]
-NUMERIC_FEATURES = ["air_temp_k", "process_temp_k", "rot_speed_rpm", "torque_nm", "tool_wear_min"]
-INPUT_FEATURES = CATEGORICAL_FEATURES + NUMERIC_FEATURES  # order expected by the pipeline
-
-ENGINEERED_FEATURES = ["temp_diff_k", "power_w", "wear_torque"]
-MODEL_NUMERIC_FEATURES = NUMERIC_FEATURES + ENGINEERED_FEATURES
-
-TYPE_CATEGORIES = ["L", "M", "H"]  # product quality variant: Low / Medium / High
+ENGINEERED_FEATURES = ["temp_diff_c", "power_w", "wear_torque"]
+MODEL_FEATURES = INPUT_FEATURES + ENGINEERED_FEATURES
 
 FEATURE_LABELS = {
-    "type": "Product quality type",
-    "air_temp_k": "Air temperature (K)",
-    "process_temp_k": "Process temperature (K)",
-    "rot_speed_rpm": "Rotational speed (rpm)",
-    "torque_nm": "Torque (Nm)",
+    "air_temperature_c": "Air temperature (°C)",
+    "process_temperature_c": "Process temperature (°C)",
+    "rotational_speed_rpm": "Rotational speed (rpm)",
+    "torque_nm": "Torque (N·m)",
     "tool_wear_min": "Tool wear (min)",
+    "vibration_mm_s": "Vibration (mm/s)",
+    "machine_age_years": "Machine age (years)",
 }
 
 
 def add_engineered_features(X: pd.DataFrame) -> pd.DataFrame:
     """Add physically motivated features computed only from the inputs.
 
-    - temp_diff_k : process minus air temperature (heat dissipation)
+    Runs AFTER imputation inside the pipeline, so no value is missing here.
+    - temp_diff_c : process minus air temperature (thermal stress)
     - power_w     : mechanical power = torque x angular speed (W)
-    - wear_torque : tool wear x torque (overstrain indicator, min*Nm)
+    - wear_torque : tool wear x torque (load on a worn tool, min*N*m)
     """
-    X = pd.DataFrame(X).copy()
-    X["temp_diff_k"] = X["process_temp_k"] - X["air_temp_k"]
-    X["power_w"] = X["torque_nm"] * X["rot_speed_rpm"] * 2 * np.pi / 60
+    X = pd.DataFrame(X, columns=INPUT_FEATURES).copy()
+    X["temp_diff_c"] = X["process_temperature_c"] - X["air_temperature_c"]
+    X["power_w"] = X["torque_nm"] * X["rotational_speed_rpm"] * 2 * np.pi / 60
     X["wear_torque"] = X["tool_wear_min"] * X["torque_nm"]
     return X
 
 
-def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename raw dataset columns to the clean names used in the code."""
-    return df.rename(columns=RAW_TO_CLEAN)
+def encode_target(series: pd.Series) -> pd.Series:
+    """'Failure' -> 1, 'No_Failure' -> 0."""
+    return (series.astype(str).str.strip() == POSITIVE_RAW).astype(int)

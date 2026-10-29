@@ -1,78 +1,81 @@
 # Case 7 – Machine Failure Prediction (IFJC4002)
 
-Binary classification system that predicts whether a milling machine will **fail** (`Failure` / `No Failure`)
-from its operating conditions, deployed as a Streamlit dashboard.
+Binary classification system that predicts whether a machine will **fail during the next operating shift**
+(`Failure` / `No Failure`) from readings taken at inspection, deployed as a Streamlit dashboard.
 
 | Item | Link |
 |---|---|
-| Streamlit app | `https://<your-app>.streamlit.app` ← fill in after deployment |
+| Streamlit app | `https://<your-app>.streamlit.app` ← fill in |
 | GitHub repository | `https://github.com/<user>/<repo>` ← fill in |
-| Dataset | AI4I 2020 Predictive Maintenance Dataset – https://archive.ics.uci.edu/dataset/601 |
+| Dataset | `data/07_Machine_Failure.xlsx` – provided by the course lecturer |
 
 ## Dataset
-* **Source:** S. Matzka, "Explainable Artificial Intelligence for Predictive Maintenance Applications", 2020;
-  UCI Machine Learning Repository, DOI 10.24432/C5HS5C. Licence **CC BY 4.0** (redistribution allowed with citation).
-* 10,000 rows, 14 columns, synthetic data reflecting real industrial machining. No filtering or sampling applied.
-* `train.py` downloads the file automatically to `data/ai4i2020.csv`. If the download fails, download the zip
-  from the link above, extract `ai4i2020.csv` and place it in `data/`.
+* `07_Machine_Failure.xlsx`, sheet `Data`: **2,000 simulated machines**, each occurring once
+  (synthetic teaching data generated for IFJC4002; no real machines or outcomes). Sheet `Guide` documents the columns.
+* Target `failure_next_shift`: Failure 319 (16.0 %), No_Failure 1,681. Positive class = Failure.
+* Missing values: 16 blanks in `air_temperature_c` and 16 in `process_temperature_c`; target and IDs complete.
+* No filtering or sampling applied.
 
-| Used as input | Excluded (reason) |
+| Used as input | Excluded |
 |---|---|
-| Type (L/M/H), Air temperature [K], Process temperature [K], Rotational speed [rpm], Torque [Nm], Tool wear [min] | UDI, Product ID (identifiers); TWF, HDF, PWF, OSF, RNF (failure-mode flags – reveal the outcome) |
+| air_temperature_c, process_temperature_c (°C), rotational_speed_rpm, torque_nm (N·m), tool_wear_min, vibration_mm_s, machine_age_years | record_id (identifier) |
 
-Target: `Machine failure` (1 = Failure, positive class).
+Engineered inside the pipeline: process − air temperature, mechanical power (torque × speed), tool wear × torque.
 
 ## Project structure
 ```
 features.py        shared feature names + engineered features (used by training AND app)
-train.py           EDA, training, CV tuning, threshold tuning, evaluation, saves model
+train.py           EDA, train/validation/test split, CV tuning, threshold tuning, evaluation, saves model
 predictor.py       input validation, prediction, logging, monitoring triggers
 app.py             Streamlit dashboard
-tests/             pytest tests (normal, boundary, invalid, agreement, monitoring)
-notebooks/         Google Colab notebook that runs the whole workflow
+tests/             pytest tests (normal, boundary, missing, invalid, agreement, monitoring)
+data/              07_Machine_Failure.xlsx
 models/            machine_failure_model.joblib (pipeline + threshold + metadata)
 reports/           results.md, model_comparison.csv, figures/, reference_predictions.csv
-docs/              report draft, test log, prompt record, contribution record
+docs/              test log, prompt record, contribution record
 logs/              predictions.csv (created by the app; not committed)
 ```
 
+## Method summary
+1. Stratified split: **train 60 % / validation 20 % / test 20 %** (seed 42).
+2. Pipeline fitted on training data only: median imputation → engineered features → standard scaling → classifier.
+3. Hyper-parameters by stratified 5-fold CV on the training set; decision threshold and final model chosen on the
+   validation set; test set used once for the final evaluation.
+4. Models: majority-class baseline, Logistic Regression, Decision Tree, Random Forest (class-weighted).
+
+## Reproduce (Google Colab – recommended)
+Open `Case7_Machine_Failure_Colab.ipynb` in Colab, **Runtime → Run all**, and upload `07_Machine_Failure.xlsx`
+when asked. The notebook writes all files, trains, tests and downloads the complete project as a zip.
+
 ## Reproduce (local)
-Use the same Python version as the training environment (printed by the Colab notebook).
+Use the same Python version as the training environment (printed by the notebook).
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows  (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
-python train.py                 # ~2-5 min; creates models/ and reports/
+python train.py                 # creates models/ and reports/
 pytest -q                       # all tests should pass
 streamlit run app.py
 ```
-Random seed is fixed (`SEED = 42`), so results are identical between runs with the same library versions.
-
-## Reproduce (Google Colab)
-Open `notebooks/Case7_Machine_Failure_Colab.ipynb` in Colab and run all cells. It clones the repository,
-installs the pinned requirements, runs `train.py` and the tests and shows the results.
 
 ## Deploy (GitHub + Streamlit Community Cloud)
-1. Run `python train.py` and commit **including** `models/machine_failure_model.joblib` and
-   `reports/reference_predictions.csv` (the app needs both).
-2. Push to a public GitHub repository (or private and give the lecturer access).
-3. Go to https://share.streamlit.io → **Create app** → choose the repo, branch `main`, main file `app.py`.
+1. Upload the **contents** of the project folder to GitHub, including `models/machine_failure_model.joblib`,
+   `reports/reference_predictions.csv` and the `requirements.txt` written by the notebook.
+2. https://share.streamlit.io → **Create app** → repo, branch `main`, main file `app.py`.
    Under *Advanced settings* choose the **same Python version** that trained the model (printed by the notebook).
-4. Deploy, then open the **✅ Notebook agreement** tab – all reference cases must show *match*.
-5. To update the model: re-run `train.py`, commit the new `models/` and `reports/` files, push –
+3. Deploy, then open **✅ Notebook agreement** – all reference cases must show *match*.
+4. To update the model: re-run the notebook, upload the new `models/` and `reports/` files, push –
    Streamlit Cloud redeploys automatically.
 
-> The model file must be loaded with the same scikit-learn version it was trained with (the notebook writes the exact versions into
-> requirements.txt). If you change the version, retrain.
+> The model file must be loaded with the same scikit-learn version it was trained with (the notebook writes the
+> exact versions into requirements.txt).
 
 ## Monitoring
-Every prediction is appended to `logs/predictions.csv` (machine readings + prediction only, no personal data)
-and written to the app log (Streamlit Cloud → *Manage app* → *Logs*). The **📈 Monitoring** tab shows the
-predicted failure rate, mean probability, out-of-range inputs and feature drift, and raises a **review trigger** when
-(with ≥ 30 records in the window):
-* predicted failure rate > 3 × the training failure rate (≈ 3.4 %), or
+Every prediction is appended to `logs/predictions.csv` (machine readings + prediction only) and written to the app
+log (Streamlit Cloud → *Manage app* → *Logs*). The **📈 Monitoring** tab raises a **review trigger** when, with ≥ 30
+records in the window:
+* predicted failure rate > 2 × the training failure rate (≈ 16 %), or
 * > 10 % of inputs fall outside the training range, or
+* > 10 % of inputs have a missing temperature reading (sensor problem), or
 * the mean of any input shifts by > 1 training standard deviation.
 
 Streamlit Cloud storage is temporary – download the log from the Monitoring tab for your evidence.
-Logged predictions alone cannot prove real-world accuracy; true failure outcomes must be recorded and compared.
+Logged predictions alone cannot prove real-world accuracy; true outcomes must be recorded and compared.

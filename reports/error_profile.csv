@@ -1,0 +1,5 @@
+outcome,count,air_temperature_c,process_temperature_c,rotational_speed_rpm,torque_nm,tool_wear_min,vibration_mm_s,machine_age_years
+False negative (missed failure),24,26.08,70.47,1757.46,46.69,152.92,3.11,9.12
+False positive (false alarm),35,29.08,74.02,1678.43,57.69,204.86,3.78,9.55
+True negative,301,28.32,72.81,1735.48,48.05,103.39,2.16,7.26
+True positive,40,28.91,75.78,1598.78,65.96,204.08,3.87,10.08

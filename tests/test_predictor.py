@@ -12,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from features import INPUT_FEATURES  # noqa: E402
 from predictor import (  # noqa: E402
     MODEL_PATH,
     load_artifact,
@@ -24,8 +25,9 @@ from predictor import (  # noqa: E402
 
 pytestmark = pytest.mark.skipif(not MODEL_PATH.exists(), reason="run train.py first")
 
-TYPICAL = {"type": "M", "air_temp_k": 300.0, "process_temp_k": 310.0,
-           "rot_speed_rpm": 1500, "torque_nm": 40.0, "tool_wear_min": 100}
+TYPICAL = {"air_temperature_c": 28.0, "process_temperature_c": 72.5, "rotational_speed_rpm": 1700,
+           "torque_nm": 50.0, "tool_wear_min": 120, "vibration_mm_s": 2.4, "machine_age_years": 7.5}
+RISKY = {**TYPICAL, "torque_nm": 82.0, "tool_wear_min": 245, "vibration_mm_s": 5.5, "machine_age_years": 14.0}
 
 
 @pytest.fixture(scope="module")
@@ -42,49 +44,64 @@ def test_typical_input_is_valid_and_predicts(artifact):
     assert res["prediction"] in {"Failure", "No Failure"}
 
 
-def test_lowercase_type_is_accepted(artifact):
-    _, errors, _ = validate_inputs({**TYPICAL, "type": " l "}, artifact)
+def test_numeric_strings_are_accepted(artifact):
+    _, errors, _ = validate_inputs({k: str(v) for k, v in TYPICAL.items()}, artifact)
     assert errors == []
 
 
-def test_high_strain_case_more_risky_than_typical(artifact):
-    risky = {**TYPICAL, "type": "L", "rot_speed_rpm": 1200, "torque_nm": 70, "tool_wear_min": 240}
+def test_high_wear_vibration_case_more_risky_than_typical(artifact):
     p_typ = predict(artifact, validate_inputs(TYPICAL, artifact)[0])["failure_probability"]
-    p_risk = predict(artifact, validate_inputs(risky, artifact)[0])["failure_probability"]
+    p_risk = predict(artifact, validate_inputs(RISKY, artifact)[0])["failure_probability"]
     assert p_risk > p_typ
 
 
+# ---------------------------------------------------------------- missing values (imputation)
+@pytest.mark.parametrize("col", ["air_temperature_c", "process_temperature_c"])
+@pytest.mark.parametrize("blank", [None, np.nan, ""])
+def test_blank_temperature_is_imputed_with_warning(artifact, col, blank):
+    clean, errors, warnings = validate_inputs({**TYPICAL, col: blank}, artifact)
+    assert errors == []
+    assert any("is missing" in w for w in warnings)
+    res = predict(artifact, clean)
+    assert 0.0 <= res["failure_probability"] <= 1.0
+
+
+@pytest.mark.parametrize("col", ["rotational_speed_rpm", "torque_nm", "tool_wear_min",
+                                 "vibration_mm_s", "machine_age_years"])
+def test_blank_non_temperature_input_is_rejected(artifact, col):
+    _, errors, _ = validate_inputs({**TYPICAL, col: None}, artifact)
+    assert errors
+
+
 # ---------------------------------------------------------------- boundary
-def test_training_min_and_max_are_valid_without_warning(artifact):
+def test_training_min_and_max_are_valid_without_range_warning(artifact):
     s = artifact["feature_stats"]
     for key in ("min", "max"):
-        inp = {"type": "L", **{c: s[c][key] for c in s}}
+        inp = {c: s[c][key] for c in INPUT_FEATURES}
         _, errors, warnings = validate_inputs(inp, artifact)
         assert errors == []
         assert not any("training range" in w for w in warnings)
 
 
 def test_outside_training_range_gives_warning_not_error(artifact):
-    _, errors, warnings = validate_inputs({**TYPICAL, "rot_speed_rpm": 3500}, artifact)
+    _, errors, warnings = validate_inputs({**TYPICAL, "rotational_speed_rpm": 3500}, artifact)
     assert errors == []
     assert any("training range" in w for w in warnings)
 
 
 def test_process_not_above_air_temperature_warns(artifact):
-    _, errors, warnings = validate_inputs({**TYPICAL, "process_temp_k": 300.0}, artifact)
+    _, errors, warnings = validate_inputs({**TYPICAL, "process_temperature_c": 28.0}, artifact)
     assert errors == [] and any("Process temperature" in w for w in warnings)
 
 
 # ---------------------------------------------------------------- invalid
 @pytest.mark.parametrize("bad", [
-    {"type": "X"},
-    {"type": None},
     {"torque_nm": -5},
-    {"rot_speed_rpm": 0},
+    {"rotational_speed_rpm": 0},
     {"tool_wear_min": 1000},
-    {"air_temp_k": "abc"},
-    {"air_temp_k": None},
-    {"process_temp_k": np.nan},
+    {"vibration_mm_s": "abc"},
+    {"machine_age_years": -1},
+    {"air_temperature_c": 500},
     {"torque_nm": float("inf")},
 ])
 def test_invalid_inputs_are_rejected(artifact, bad):
@@ -93,9 +110,10 @@ def test_invalid_inputs_are_rejected(artifact, bad):
 
 
 def test_batch_rejects_bad_rows_without_crashing(artifact):
-    df = pd.DataFrame([TYPICAL, {**TYPICAL, "type": "X"}, {**TYPICAL, "torque_nm": -1}])
+    df = pd.DataFrame([TYPICAL, {**TYPICAL, "torque_nm": -1}, {**TYPICAL, "tool_wear_min": None},
+                       {**TYPICAL, "air_temperature_c": None}])
     out = predict_batch(artifact, df)
-    assert list(out["status"]) == ["OK", "REJECTED", "REJECTED"]
+    assert list(out["status"]) == ["OK", "REJECTED", "REJECTED", "OK (warning)"]
 
 
 # ---------------------------------------------------------------- agreement with training script
@@ -112,13 +130,21 @@ def test_reference_predictions_match_training_script(artifact):
 # ---------------------------------------------------------------- monitoring
 def test_monitoring_trigger_fires_on_drift(artifact, tmp_path):
     log_file = tmp_path / "log.csv"
-    risky = {**TYPICAL, "type": "L", "rot_speed_rpm": 1200, "torque_nm": 75, "tool_wear_min": 240}
     for _ in range(40):
-        clean, _, w = validate_inputs(risky, artifact)
+        clean, _, w = validate_inputs(RISKY, artifact)
         log_prediction(clean, predict(artifact, clean), w, path=log_file)
     summ = summarise_log(pd.read_csv(log_file), artifact)
     assert summ["n_total"] == 40
     assert summ["triggers"], "expected a review trigger for shifted inputs"
+
+
+def test_monitoring_trigger_fires_on_missing_sensor(artifact, tmp_path):
+    log_file = tmp_path / "log.csv"
+    for _ in range(40):
+        clean, _, w = validate_inputs({**TYPICAL, "air_temperature_c": None}, artifact)
+        log_prediction(clean, predict(artifact, clean), w, path=log_file)
+    summ = summarise_log(pd.read_csv(log_file), artifact)
+    assert any("missing temperature" in t for t in summ["triggers"])
 
 
 def test_monitoring_handles_empty_log(artifact):

@@ -9,10 +9,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from features import FEATURE_LABELS, INPUT_FEATURES, NUMERIC_FEATURES, TYPE_CATEGORIES
+from features import FEATURE_LABELS, IMPUTABLE_FEATURES, INPUT_FEATURES
 from predictor import (
     HARD_LIMITS,
-    LOG_PATH,
     MODEL_PATH,
     load_artifact,
     log_prediction,
@@ -48,8 +47,7 @@ threshold = artifact["threshold"]
 
 st.title("⚙️ Machine Failure Prediction")
 st.markdown(
-    "Predicts whether a milling machine will **fail** under the current operating conditions, "
-    "using a model trained on the AI4I 2020 Predictive Maintenance dataset. "
+    "Predicts whether a machine will **fail during the next operating shift** from readings taken at inspection. "
     "Intended for maintenance staff as an early-warning aid, not a replacement for inspection."
 )
 
@@ -65,10 +63,11 @@ with st.sidebar:
     st.caption(f"Trained {artifact.get('trained_at', '?')} | scikit-learn {artifact.get('sklearn_version', '?')}")
     st.header("How to use")
     st.markdown(
-        "1. Enter the machine readings in **Predict**.\n"
-        "2. Press **Predict failure**.\n"
-        "3. Values outside the training range are allowed but flagged.\n"
-        "4. Check **Monitoring** for logged predictions and review alerts."
+        "1. Enter the inspection readings in **Predict**.\n"
+        "2. Tick *reading unavailable* if a temperature sensor gave no value.\n"
+        "3. Press **Predict failure**.\n"
+        "4. Values outside the training range are allowed but flagged.\n"
+        "5. Check **Monitoring** for logged predictions and review alerts."
     )
 
 tab_pred, tab_batch, tab_check, tab_mon, tab_about = st.tabs(
@@ -76,24 +75,28 @@ tab_pred, tab_batch, tab_check, tab_mon, tab_about = st.tabs(
 
 # --------------------------------------------------------------------------- Predict
 with tab_pred:
-    st.subheader("Enter operating conditions")
-    defaults = {"air_temp_k": 300.0, "process_temp_k": 310.0, "rot_speed_rpm": 1500.0,
-                "torque_nm": 40.0, "tool_wear_min": 100.0}
-    steps = {"air_temp_k": 0.1, "process_temp_k": 0.1, "rot_speed_rpm": 10.0, "torque_nm": 0.5, "tool_wear_min": 1.0}
+    st.subheader("Enter inspection readings")
+    steps = {"air_temperature_c": 0.1, "process_temperature_c": 0.1, "rotational_speed_rpm": 10.0,
+             "torque_nm": 0.5, "tool_wear_min": 1.0, "vibration_mm_s": 0.01, "machine_age_years": 0.1}
     with st.form("predict_form"):
-        c1, c2, c3 = st.columns(3)
-        inputs = {"type": c1.selectbox(FEATURE_LABELS["type"], TYPE_CATEGORIES,
-                                       help="L = low (50% of products), M = medium (30%), H = high quality (20%)")}
-        cols = [c1, c2, c2, c3, c3]
-        for col, c in zip(cols, NUMERIC_FEATURES):
+        cols = st.columns(3)
+        inputs, unavailable = {}, {}
+        for k, c in enumerate(INPUT_FEATURES):
+            col = cols[k % 3]
             lo, hi = HARD_LIMITS[c]
+            default = float(round(stats[c]["median"], 2))
             inputs[c] = col.number_input(
-                FEATURE_LABELS[c], min_value=lo, max_value=hi, value=defaults[c], step=steps[c],
+                FEATURE_LABELS[c], min_value=lo, max_value=hi, value=default, step=steps[c],
                 help=f"Training range: {stats[c]['min']:g} to {stats[c]['max']:g}. Valid range: {lo:g} to {hi:g}.")
-        st.caption(f"Air ≈ {inputs['air_temp_k'] - 273.15:.1f} °C, process ≈ {inputs['process_temp_k'] - 273.15:.1f} °C")
+            if c in IMPUTABLE_FEATURES:
+                unavailable[c] = col.checkbox("Reading unavailable", key=f"na_{c}",
+                                              help="The model fills a missing temperature with the training median.")
         submitted = st.form_submit_button("Predict failure", type="primary")
 
     if submitted:
+        for c, na in unavailable.items():
+            if na:
+                inputs[c] = None
         clean, errors, warnings = validate_inputs(inputs, artifact)
         if errors:
             for e in errors:
@@ -105,32 +108,35 @@ with tab_pred:
                 st.warning(w)
             p = res["failure_probability"]
             if res["prediction"] == "Failure":
-                st.error(f"### Prediction: **FAILURE** likely\nEstimated failure probability **{p:.1%}** "
-                         f"(threshold {res['threshold']:.0%}). Recommend inspection before continuing.")
+                st.error(f"### Prediction: **FAILURE** likely in the next shift\nEstimated failure probability "
+                         f"**{p:.1%}** (threshold {res['threshold']:.0%}). Recommend inspection before the next shift.")
             else:
-                st.success(f"### Prediction: **NO FAILURE**\nEstimated failure probability **{p:.1%}** "
-                           f"(threshold {res['threshold']:.0%}).")
+                st.success(f"### Prediction: **NO FAILURE** in the next shift\nEstimated failure probability "
+                           f"**{p:.1%}** (threshold {res['threshold']:.0%}).")
             st.progress(min(max(p, 0.0), 1.0))
             m1, m2, m3 = st.columns(3)
-            m1.metric("Temperature difference", f"{res['temp_diff_k']:.1f} K")
+            m1.metric("Process − air temperature", f"{res['temp_diff_c']:.1f} °C")
             m2.metric("Mechanical power", f"{res['power_w']:,.0f} W")
-            m3.metric("Tool wear × torque", f"{res['wear_torque']:,.0f} min·Nm")
-            st.caption("The probability is a model score calibrated on historical data; it is not a guarantee. "
+            m3.metric("Tool wear × torque", f"{res['wear_torque']:,.0f} min·N·m")
+            st.caption("The probability is a model score learned from simulated data; it is not a guarantee. "
                        "Logged predictions cannot confirm accuracy until the true outcome is recorded.")
 
 # --------------------------------------------------------------------------- Batch
 with tab_batch:
     st.subheader("Batch prediction from CSV")
     st.markdown(f"Upload a CSV with columns `{', '.join(INPUT_FEATURES)}`. Each row is validated; "
-                "invalid rows are **rejected with a reason** instead of crashing the app.")
+                "invalid rows are **rejected with a reason** instead of crashing the app. "
+                "Blank temperatures are allowed (median-filled); other blanks are rejected.")
+    base = {"air_temperature_c": 28.0, "process_temperature_c": 72.5, "rotational_speed_rpm": 1700,
+            "torque_nm": 50.0, "tool_wear_min": 120, "vibration_mm_s": 2.4, "machine_age_years": 7.5}
     example = pd.DataFrame([
-        {"type": "M", "air_temp_k": 300.0, "process_temp_k": 310.0, "rot_speed_rpm": 1500, "torque_nm": 40, "tool_wear_min": 100},
-        {"type": "L", "air_temp_k": 302.0, "process_temp_k": 311.0, "rot_speed_rpm": 1250, "torque_nm": 70, "tool_wear_min": 220},
-        {"type": "X", "air_temp_k": 300.0, "process_temp_k": 310.0, "rot_speed_rpm": 1500, "torque_nm": 40, "tool_wear_min": 100},
-        {"type": "M", "air_temp_k": 300.0, "process_temp_k": 310.0, "rot_speed_rpm": 1500, "torque_nm": -5, "tool_wear_min": 100},
-        {"type": "H", "air_temp_k": "abc", "process_temp_k": 310.0, "rot_speed_rpm": 1500, "torque_nm": 40, "tool_wear_min": 100},
-        {"type": "H", "air_temp_k": 300.0, "process_temp_k": None, "rot_speed_rpm": 1500, "torque_nm": 40, "tool_wear_min": 100},
-        {"type": "L", "air_temp_k": 300.0, "process_temp_k": 310.0, "rot_speed_rpm": 3500, "torque_nm": 90, "tool_wear_min": 300},
+        base,
+        {**base, "torque_nm": 80.0, "tool_wear_min": 240, "vibration_mm_s": 4.8, "machine_age_years": 13.0},
+        {**base, "air_temperature_c": None},
+        {**base, "torque_nm": -5},
+        {**base, "vibration_mm_s": "abc"},
+        {**base, "tool_wear_min": None},
+        {**base, "rotational_speed_rpm": 3500},
     ])
     st.download_button("Download example CSV (includes invalid rows)", example.to_csv(index=False),
                        "example_inputs.csv", "text/csv")
@@ -149,7 +155,7 @@ with tab_batch:
                 st.error("Please upload at most 5,000 rows.")
             else:
                 out = predict_batch(artifact, df_in)
-                st.dataframe(out, width="stretch")
+                st.dataframe(out.astype({c: str for c in INPUT_FEATURES}), width="stretch")
                 st.write(out["status"].value_counts())
                 if st.checkbox("Add valid rows to the monitoring log"):
                     for _, r in out[out.status.str.startswith("OK")].iterrows():
@@ -162,7 +168,7 @@ with tab_batch:
 with tab_check:
     st.subheader("Dashboard vs training notebook")
     st.markdown("Re-predicts the reference cases saved by `train.py` and compares the probabilities. "
-                "Agreement shows that the saved preprocessing and feature order are applied identically.")
+                "Agreement shows that the saved imputation, features, scaling and feature order are applied identically.")
     if not REFERENCE_PATH.exists():
         st.info("reports/reference_predictions.csv not found - run train.py.")
     else:
@@ -183,7 +189,8 @@ with tab_check:
         shown["abs_diff"] = shown["abs_diff"].map(lambda v: "0" if v == 0 else f"{v:.0e}")
         st.dataframe(shown, width="stretch", hide_index=True)
         st.caption("abs_diff = |app probability - notebook probability|. Values such as 2e-17 (0.00000000000000002) "
-                   "are floating-point rounding from saving to CSV, i.e. identical predictions.")
+                   "are floating-point rounding from saving to CSV, i.e. identical predictions. "
+                   "Blank temperatures (missing_temperatures case) are filled by the same median imputer.")
         if ref["match"].all():
             st.success(f"All {len(ref)} reference cases match (max |difference| = {ref['abs_diff'].max():.2e}).")
         else:
@@ -198,12 +205,13 @@ with tab_mon:
     if summ["n_total"] == 0:
         st.info("No predictions logged yet.")
     else:
-        k1, k2, k3, k4 = st.columns(4)
+        k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Logged predictions", summ["n_total"])
         k2.metric("Predicted failure rate", f"{summ['predicted_failure_rate']:.1%}",
                   f"training rate {summ['train_failure_rate']:.1%}", delta_color="off")
         k3.metric("Mean failure probability", f"{summ['mean_probability']:.1%}")
         k4.metric("Out-of-training-range inputs", f"{summ['out_of_range_share']:.0%}")
+        k5.metric("Missing temperature readings", f"{summ['missing_share']:.0%}")
 
         if not summ["enough_data"]:
             st.info(f"Review triggers are evaluated once at least 30 predictions are in the window "
@@ -228,15 +236,21 @@ with tab_mon:
 # --------------------------------------------------------------------------- About
 with tab_about:
     st.subheader("About the model")
+    split = artifact.get("split", {})
     st.markdown(f"""
-- **Data:** AI4I 2020 Predictive Maintenance Dataset (S. Matzka, UCI Machine Learning Repository, CC BY 4.0), 10,000 records.
-- **Inputs:** product type, air & process temperature, rotational speed, torque, tool wear.
-  Engineered inside the pipeline: temperature difference, mechanical power, wear × torque.
-- **Excluded:** identifiers (UDI, Product ID) and failure-mode flags (TWF, HDF, PWF, OSF, RNF) because they reveal the outcome.
-- **Target:** Machine failure (Failure / No Failure); positive class = Failure.
-- **Selected model:** {artifact['model_name']} with decision threshold {threshold:.2f} (tuned for F1 using cross-validation).
-- **Limitations:** synthetic dataset; random failures (RNF) are unpredictable by design; failures are rare (≈3.4%),
-  so false alarms and missed failures should both be expected.
+- **Data:** `07_Machine_Failure.xlsx` provided by the course lecturer — 2,000 simulated machines, each once
+  (synthetic teaching data, not real machines).
+- **Inputs:** air & process temperature (°C), rotational speed (rpm), torque (N·m), tool wear (min),
+  vibration (mm/s), machine age (years). Engineered inside the pipeline: process − air temperature,
+  mechanical power, tool wear × torque. Blank temperatures are filled with the training median.
+- **Excluded:** `record_id` (identifier).
+- **Target:** `failure_next_shift` (Failure / No Failure in the next operating shift); positive class = Failure.
+- **Split:** stratified train / validation / test = {split.get('train', {}).get('rows', '?')} /
+  {split.get('validation', {}).get('rows', '?')} / {split.get('test', {}).get('rows', '?')} machines.
+- **Selected model:** {artifact['model_name']} with decision threshold {threshold:.2f}
+  (hyper-parameters by 5-fold CV, threshold and model choice on the validation set).
+- **Limitations:** simulated data with a probabilistic target, so some failures look like normal machines and
+  cannot be predicted; failures are about 16% of machines, so false alarms and missed failures should both be expected.
 """)
     st.json(json.loads(json.dumps({k: v for k, v in artifact.items() if k != "pipeline"}, default=str)),
             expanded=False)
