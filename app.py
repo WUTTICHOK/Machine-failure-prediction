@@ -254,3 +254,12 @@ with tab_about:
 """)
     st.json(json.loads(json.dumps({k: v for k, v in artifact.items() if k != "pipeline"}, default=str)),
             expanded=False)
+
+# --------------------------------------------------------------------------- Footer (every tab)
+GROUP_NAME = "MADE IN THAILAND (Walailak)"
+st.divider()
+st.markdown(
+    f"<div style='text-align:center; opacity:0.8;'>Developed by group <b>{GROUP_NAME}</b> · "
+    "IFJC4002 Practical Artificial Intelligence with Python · Case 7 Machine Failure Prediction</div>",
+    unsafe_allow_html=True,
+)
